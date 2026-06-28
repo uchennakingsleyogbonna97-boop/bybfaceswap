@@ -516,6 +516,7 @@
   let strength = 0.6;
   let loopId = null;
   let ws = null;
+  let currentApiKey = '';
   let fpsCounter = 0;
   let lastFpsTime = performance.now();
   const MODEL = 'fal-ai/live-portrait'; // face cloning / live portrait model
@@ -606,7 +607,7 @@
       log('Camera ready', 'success');
 
       document.getElementById('connectingMsg').textContent = 'CONNECTING TO FAL...';
-      await connectWebSocket(apiKey);
+      await startHTTPSession(apiKey);
 
     } catch (err) {
       log(`Error: ${err.message}`, 'error');
@@ -615,68 +616,22 @@
     }
   }
 
-  // ── WebSocket to Fal realtime ──────────────────────────────────────────────
-  async function connectWebSocket(apiKey) {
-    const wsUrl = `wss://fal.run/${MODEL}/realtime?fal_key=${encodeURIComponent(apiKey)}`;
-    ws = new WebSocket(wsUrl);
-    ws.binaryType = 'arraybuffer';
-
-    ws.onopen = () => {
-      log('Connected to Fal.ai ✓', 'success');
-      document.getElementById('connectingOverlay').classList.remove('visible');
-      document.getElementById('outputCanvas').style.display = 'block';
-      document.getElementById('remotePlaceholder').style.display = 'none';
-      document.getElementById('fpsBadge').style.display = 'block';
-      document.getElementById('stopBtn').disabled = false;
-      document.getElementById('applyBtn').disabled = false;
-      isRunning = true;
-      setStatus('live');
-      startFrameLoop();
-    };
-
-    ws.onmessage = async (event) => {
-      try {
-        let data;
-        if (event.data instanceof ArrayBuffer) {
-          data = JSON.parse(new TextDecoder().decode(event.data));
-        } else {
-          data = JSON.parse(event.data);
-        }
-
-        if (data.images && data.images[0]) {
-          const imgSrc = data.images[0].url || data.images[0];
-          await drawOutputImage(imgSrc);
-          updateFps();
-        } else if (data.error) {
-          log(`Fal error: ${data.error}`, 'error');
-        }
-      } catch(e) {
-        // binary frame — try as image blob
-        if (event.data instanceof ArrayBuffer) {
-          const blob = new Blob([event.data], { type: 'image/jpeg' });
-          const url = URL.createObjectURL(blob);
-          await drawOutputImage(url);
-          URL.revokeObjectURL(url);
-          updateFps();
-        }
-      }
-    };
-
-    ws.onerror = (e) => {
-      log('WebSocket error — check API key', 'error');
-      toast('Connection error. Check your Fal.ai API key.');
-      reset();
-    };
-
-    ws.onclose = (e) => {
-      if (isRunning) {
-        log(`Disconnected (${e.code})`, 'error');
-        reset();
-      }
-    };
+  // ── HTTP session (live-portrait uses REST, not WebSocket) ────────────────
+  async function startHTTPSession(apiKey) {
+    currentApiKey = apiKey;
+    log('Fal.ai ready ✓', 'success');
+    document.getElementById('connectingOverlay').classList.remove('visible');
+    document.getElementById('outputCanvas').style.display = 'block';
+    document.getElementById('remotePlaceholder').style.display = 'none';
+    document.getElementById('fpsBadge').style.display = 'block';
+    document.getElementById('stopBtn').disabled = false;
+    document.getElementById('applyBtn').disabled = false;
+    isRunning = true;
+    setStatus('live');
+    startFrameLoop();
   }
 
-  // ── Frame loop: capture webcam → send to Fal ──────────────────────────────
+  // ── Frame loop: capture webcam → POST to Fal HTTP ─────────────────────────
   function startFrameLoop() {
     const video = document.getElementById('localVideo');
     const cap = document.getElementById('captureCanvas');
@@ -685,31 +640,61 @@
 
     let sending = false;
 
-    function loop() {
+    async function loop() {
       if (!isRunning) return;
       loopId = requestAnimationFrame(loop);
 
-      if (sending || !ws || ws.readyState !== WebSocket.OPEN) return;
+      if (sending) return;
       if (video.readyState < 2) return;
 
       sending = true;
       ctx.drawImage(video, 0, 0, 512, 512);
       const b64 = cap.toDataURL('image/jpeg', 0.75).split(',')[1];
 
-      const payload = JSON.stringify({
-        source_image_url: `data:image/jpeg;base64,${characterImageB64}`,
-        driving_image_url: `data:image/jpeg;base64,${b64}`,
-        live_portrait_dsize: 512,
-        live_portrait_scale: 2.3,
-        video_frame_load_cap: 1
-      });
+      try {
+        const resp = await fetch(`https://fal.run/${MODEL}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Key ${currentApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            source_image_url: `data:image/jpeg;base64,${characterImageB64}`,
+            driving_image_url: `data:image/jpeg;base64,${b64}`,
+            live_portrait_dsize: 512,
+            live_portrait_scale: 2.3,
+            video_frame_load_cap: 1
+          })
+        });
 
-      try { ws.send(payload); } catch(e) {}
+        if (!resp.ok) {
+          const err = await resp.text();
+          log(`Fal error ${resp.status}: ${err.slice(0,120)}`, 'error');
+          sending = false;
+          return;
+        }
+
+        const data = await resp.json();
+        // live-portrait returns { video: { url } } or { images: [...] }
+        if (data.video && data.video.url) {
+          await drawOutputImage(data.video.url);
+          updateFps();
+        } else if (data.images && data.images[0]) {
+          const imgSrc = data.images[0].url || data.images[0];
+          await drawOutputImage(imgSrc);
+          updateFps();
+        } else {
+          log('Unexpected response: ' + JSON.stringify(data).slice(0,100), 'error');
+        }
+      } catch(e) {
+        log(`Request failed: ${e.message}`, 'error');
+      }
+
       sending = false;
     }
 
     loopId = requestAnimationFrame(loop);
-    log(`Streaming at strength ${strength.toFixed(2)}`, 'info');
+    log('Streaming frames to Fal.ai...', 'info');
   }
 
   // ── Draw output frame ──────────────────────────────────────────────────────
