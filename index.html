@@ -433,6 +433,20 @@
       </div>
     </div>
 
+    <!-- CHARACTER IMAGE -->
+    <div class="sidebar-section">
+      <div class="section-label">Character to Clone</div>
+      <div id="charPreviewWrap" style="display:none;margin-bottom:10px;position:relative;">
+        <img id="charPreview" style="width:100%;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--accent);">
+        <button onclick="clearCharacter()" style="position:absolute;top:5px;right:5px;background:rgba(8,10,15,0.8);border:1px solid var(--danger);color:var(--danger);border-radius:4px;cursor:pointer;font-size:0.7rem;padding:2px 7px;">✕</button>
+      </div>
+      <label style="display:block;cursor:pointer;">
+        <input type="file" id="charImageInput" accept="image/*" style="display:none" onchange="loadCharacterImage(this)">
+        <div id="charUploadBtn" class="btn btn-ghost btn-full" style="text-align:center;">📸 Upload Character Image</div>
+      </label>
+      <p style="font-size:0.65rem;color:var(--muted);margin-top:7px;line-height:1.5;">Upload a clear photo of the face you want to clone onto your webcam feed.</p>
+    </div>
+
     <!-- SESSION -->
     <div class="sidebar-section">
       <div class="section-label">Session</div>
@@ -504,7 +518,31 @@
   let ws = null;
   let fpsCounter = 0;
   let lastFpsTime = performance.now();
-  const MODEL = 'fal-ai/lcm-sd15-i2i'; // fast real-time i2i model on fal
+  const MODEL = 'fal-ai/live-portrait'; // face cloning / live portrait model
+  let characterImageB64 = null; // base64 of the reference character image
+
+  // ── Character Image ────────────────────────────────────────────────────────
+  function loadCharacterImage(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      characterImageB64 = e.target.result.split(',')[1];
+      document.getElementById('charPreview').src = e.target.result;
+      document.getElementById('charPreviewWrap').style.display = 'block';
+      document.getElementById('charUploadBtn').textContent = '✅ Character Loaded';
+      log(`Character image loaded: ${file.name}`, 'success');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearCharacter() {
+    characterImageB64 = null;
+    document.getElementById('charPreviewWrap').style.display = 'none';
+    document.getElementById('charUploadBtn').textContent = '📸 Upload Character Image';
+    document.getElementById('charImageInput').value = '';
+    log('Character image cleared');
+  }
 
   // ── Logging ────────────────────────────────────────────────────────────────
   function log(msg, type = 'default') {
@@ -548,7 +586,7 @@
   async function startSession() {
     const apiKey = document.getElementById('apiKeyInput').value.trim();
     if (!apiKey) { toast('Enter your Fal.ai API key first.'); return; }
-    if (!currentPrompt) { toast('Set an edit prompt before starting.'); return; }
+    if (!characterImageB64) { toast('Upload a character image to clone first.'); return; }
 
     document.getElementById('startBtn').disabled = true;
     document.getElementById('connectingOverlay').classList.add('visible');
@@ -659,12 +697,11 @@
       const b64 = cap.toDataURL('image/jpeg', 0.75).split(',')[1];
 
       const payload = JSON.stringify({
-        prompt: currentPrompt,
-        image_url: `data:image/jpeg;base64,${b64}`,
-        strength: strength,
-        num_inference_steps: 4,
-        guidance_scale: 1,
-        seed: -1
+        source_image_url: `data:image/jpeg;base64,${characterImageB64}`,
+        driving_image_url: `data:image/jpeg;base64,${b64}`,
+        live_portrait_dsize: 512,
+        live_portrait_scale: 2.3,
+        video_frame_load_cap: 1
       });
 
       try { ws.send(payload); } catch(e) {}
