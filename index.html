@@ -617,7 +617,7 @@
     document.getElementById('remotePlaceholder').style.display = 'none';
     document.getElementById('fpsBadge').style.display = 'block';
     document.getElementById('stopBtn').disabled = false;
-    document.getElementById('applyBtn').disabled = false;
+    
     isRunning = true;
     setStatus('live');
     startFrameLoop();
@@ -735,7 +735,7 @@
     setStatus('offline');
     document.getElementById('startBtn').disabled = false;
     document.getElementById('stopBtn').disabled = true;
-    document.getElementById('applyBtn').disabled = true;
+    
     document.getElementById('localVideo').style.display = 'none';
     document.getElementById('outputCanvas').style.display = 'none';
     document.getElementById('localPlaceholder').style.display = 'flex';
