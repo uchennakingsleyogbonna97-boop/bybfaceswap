@@ -413,6 +413,7 @@
       </div>
       <canvas id="outputCanvas" style="display:none"></canvas>
       <div class="pane-label transformed">TRANSFORMED</div>
+      <div id="errorOverlay" style="display:none;position:absolute;bottom:14px;left:14px;right:14px;background:rgba(255,40,70,0.15);border:1px solid #ff4466;border-radius:8px;padding:10px 14px;font-family:monospace;font-size:0.7rem;color:#ff4466;z-index:10;word-break:break-all;"></div>
       <div class="fps-badge" id="fpsBadge">0 FPS</div>
       <div class="connecting-overlay" id="connectingOverlay">
         <div class="spinner"></div>
@@ -539,6 +540,11 @@
 
   // ── Logging ────────────────────────────────────────────────────────────────
   function log(msg, type = 'default') {
+    // Show errors visibly on screen
+    if (type === 'error') {
+      const ov = document.getElementById('errorOverlay');
+      if (ov) { ov.style.display = 'block'; ov.textContent = '⚠ ' + msg; }
+    }
     const area = document.getElementById('logArea');
     const el = document.createElement('div');
     el.className = `log-entry ${type}`;
@@ -721,6 +727,8 @@
 
   function reset() {
     isRunning = false;
+    const ov = document.getElementById('errorOverlay');
+    if (ov) ov.style.display = 'none';
     if (loopId) { cancelAnimationFrame(loopId); loopId = null; }
     if (ws) { try { ws.close(); } catch(e){} ws = null; }
     if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
