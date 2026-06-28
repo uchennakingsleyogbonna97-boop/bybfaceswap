@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BYBTRANS — Real-Time AI Video</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg: #080a0f;
+    --surface: #0e1117;
+    --panel: #131720;
+    --border: #1e2535;
+    --accent: #00f0ff;
+    --accent2: #7b4fff;
+    --live: #00e87a;
+    --text: #e8eaf0;
+    --muted: #5a6280;
+    --danger: #ff4466;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .logo span {
+    font-weight: 400;
+    font-size: 0.75rem;
+    display: block;
+    letter-spacing: 0.2em;
+    background: none;
+    -webkit-text-fill-color: var(--muted);
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-size: 0.75rem;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 0.08em;
+    border: 1px solid var(--border);
+    background: var(--panel);
+  }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+
+  .status-dot.live { background: var(--live); box-shadow: 0 0 8px var(--live); animation: pulse 1.5s infinite; }
+  .status-dot.connecting { background: #ffaa00; animation: pulse 0.8s infinite; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    height: calc(100vh - 65px);
+  }
+
+  .video-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border-right: 1px solid var(--border);
+  }
+
+  .video-pane {
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .video-pane video, .video-pane canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .pane-label {
+    position: absolute;
+    top: 14px; left: 14px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: rgba(8,10,15,0.75);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    text-transform: uppercase;
+    z-index: 2;
+  }
+
+  .pane-label.transformed { color: var(--accent); border-color: var(--accent); }
+
+  .video-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    color: var(--muted);
+    text-align: center;
+    padding: 32px;
+    position: absolute;
+    inset: 0;
+    background: var(--bg);
+  }
+
+  .video-placeholder svg { opacity: 0.3; }
+  .video-placeholder p { font-size: 0.8rem; line-height: 1.6; }
+
+  /* fps badge */
+  .fps-badge {
+    position: absolute;
+    bottom: 14px; right: 14px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(8,10,15,0.75);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    display: none;
+  }
+
+  .sidebar {
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-section {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-section.grow {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .input-row { display: flex; gap: 8px; }
+
+  input[type="text"], input[type="password"] {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.75rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input:focus { border-color: var(--accent); }
+
+  .btn {
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #000;
+  }
+
+  .btn-primary:hover { opacity: 0.85; transform: translateY(-1px); }
+  .btn-ghost {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+  .btn-danger:hover { background: var(--danger); color: #fff; }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important; }
+  .btn-full { width: 100%; }
+
+  .control-row { display: flex; gap: 8px; }
+
+  textarea {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.85rem;
+    resize: none;
+    outline: none;
+    line-height: 1.5;
+    transition: border-color 0.2s;
+    min-height: 68px;
+    width: 100%;
+  }
+
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: var(--muted); }
+
+  .prompt-area { display: flex; flex-direction: column; gap: 10px; }
+
+  .active-prompt {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(0,240,255,0.06);
+    border: 1px solid rgba(0,240,255,0.2);
+    border-radius: 8px;
+    font-size: 0.78rem;
+    margin-bottom: 10px;
+  }
+  .active-prompt.visible { display: flex; }
+  .active-prompt-text { flex: 1; color: var(--accent); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .clear-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 0; line-height: 1; flex-shrink: 0; }
+  .clear-btn:hover { color: var(--danger); }
+
+  .quick-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+  }
+
+  .quick-btn {
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    font-family: 'Space Grotesk', sans-serif;
+    line-height: 1.4;
+  }
+
+  .quick-btn:hover { border-color: var(--accent2); color: var(--accent); background: rgba(123,79,255,0.08); }
+  .quick-btn.active { border-color: var(--accent); background: rgba(0,240,255,0.08); color: var(--accent); }
+  .quick-btn span { display: block; font-size: 1rem; margin-bottom: 3px; }
+
+  .add-quick { display: flex; gap: 7px; margin-top: 10px; }
+  .add-quick input { font-size: 0.75rem; padding: 8px 10px; }
+  .add-quick .btn { padding: 8px 12px; font-size: 0.78rem; }
+
+  .log-area {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .log-entry {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--muted);
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(30,37,53,0.4);
+    display: flex;
+    gap: 8px;
+  }
+
+  .log-entry .time { color: var(--accent2); opacity: 0.7; flex-shrink: 0; }
+  .log-entry.success .msg { color: var(--live); }
+  .log-entry.error .msg { color: var(--danger); }
+  .log-entry.info .msg { color: var(--accent); }
+
+  .connecting-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(8,10,15,0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 14px;
+    backdrop-filter: blur(4px);
+    z-index: 5;
+  }
+  .connecting-overlay.visible { display: flex; }
+  .spinner { width: 36px; height: 36px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  .connecting-overlay p { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--muted); letter-spacing: 0.1em; }
+
+  .toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--panel);
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    padding: 12px 22px;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-family: 'Space Mono', monospace;
+    transition: transform 0.3s ease;
+    z-index: 999;
+    max-width: 440px;
+    text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* strength slider */
+  .slider-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .slider-row label { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .slider-val { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--accent); min-width: 28px; text-align: right; }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .video-section { height: 50vw; min-height: 240px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    BYBTRANS
+    <span>REAL-TIME AI VIDEO · FAL.AI</span>
+  </div>
+  <div class="status-pill">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">OFFLINE</span>
+  </div>
+</header>
+
+<main>
+  <div class="video-section">
+    <!-- Original -->
+    <div class="video-pane">
+      <div class="video-placeholder" id="localPlaceholder">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.89L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
+        <p>Your webcam<br>appears here</p>
+      </div>
+      <video id="localVideo" autoplay muted playsinline style="display:none"></video>
+      <div class="pane-label">ORIGINAL</div>
+    </div>
+
+    <!-- Transformed -->
+    <div class="video-pane">
+      <div class="video-placeholder" id="remotePlaceholder">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+        <p>AI-transformed output<br>streams here</p>
+      </div>
+      <canvas id="outputCanvas" style="display:none"></canvas>
+      <div class="pane-label transformed">TRANSFORMED</div>
+      <div class="fps-badge" id="fpsBadge">0 FPS</div>
+      <div class="connecting-overlay" id="connectingOverlay">
+        <div class="spinner"></div>
+        <p id="connectingMsg">STARTING...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- API KEY -->
+    <div class="sidebar-section">
+      <div class="section-label">Fal.ai API Key</div>
+      <div class="input-row">
+        <input type="password" id="apiKeyInput" placeholder="fal_key_..." autocomplete="off">
+        <button class="btn btn-ghost" onclick="toggleKey()" title="Show/hide">👁</button>
+      </div>
+    </div>
+
+    <!-- SESSION -->
+    <div class="sidebar-section">
+      <div class="section-label">Session</div>
+      <div class="control-row">
+        <button class="btn btn-primary" id="startBtn" onclick="startSession()" style="flex:1">▶ Start</button>
+        <button class="btn btn-danger" id="stopBtn" onclick="stopSession()" disabled>■ Stop</button>
+      </div>
+    </div>
+
+    <!-- PROMPT -->
+    <div class="sidebar-section">
+      <div class="section-label">Active Edit</div>
+      <div class="active-prompt" id="activePromptDisplay">
+        <div class="active-prompt-text" id="activePromptText"></div>
+        <button class="clear-btn" onclick="clearPrompt()" title="Clear">✕</button>
+      </div>
+      <div class="prompt-area">
+        <textarea id="promptInput" placeholder="e.g. 'Change shirt to red', 'Add sunglasses', 'Cyberpunk background'..." rows="3"></textarea>
+        <div class="slider-row">
+          <label>Strength</label>
+          <input type="range" id="strengthSlider" min="0.3" max="0.9" step="0.05" value="0.6" oninput="updateStrength(this.value)">
+          <span class="slider-val" id="strengthVal">0.60</span>
+        </div>
+        <button class="btn btn-primary btn-full" id="applyBtn" onclick="applyPrompt()" disabled>Apply Edit</button>
+      </div>
+    </div>
+
+    <!-- QUICK EDITS -->
+    <div class="sidebar-section">
+      <div class="section-label">Quick Edits</div>
+      <div class="quick-grid" id="quickGrid">
+        <button class="quick-btn" onclick="quickEdit(this,'Change the shirt to red')"><span>👕</span>Red Shirt</button>
+        <button class="quick-btn" onclick="quickEdit(this,'Add sunglasses to the person')"><span>🕶️</span>Sunglasses</button>
+        <button class="quick-btn" onclick="quickEdit(this,'Replace background with tropical beach')"><span>🏖️</span>Beach BG</button>
+        <button class="quick-btn" onclick="quickEdit(this,'Neon cyberpunk city background')"><span>🌆</span>Neon City</button>
+        <button class="quick-btn" onclick="quickEdit(this,'Make the person look like an anime character')"><span>✨</span>Anime</button>
+        <button class="quick-btn" onclick="quickEdit(this,'Add a hat to the person')"><span>🎩</span>Add Hat</button>
+        <button class="quick-btn" onclick="quickEdit(this,'Professional studio background with soft lighting')"><span>💡</span>Studio BG</button>
+        <button class="quick-btn" onclick="quickEdit(this,'Add a beard to the person')"><span>🧔</span>Beard</button>
+      </div>
+      <div class="add-quick">
+        <input type="text" id="customLabel" placeholder="Label" style="max-width:90px">
+        <input type="text" id="customPrompt" placeholder="Prompt">
+        <button class="btn btn-ghost" onclick="addQuick()">+</button>
+      </div>
+    </div>
+
+    <!-- LOG -->
+    <div class="sidebar-section grow">
+      <div class="section-label">Log</div>
+      <div class="log-area" id="logArea"></div>
+    </div>
+
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<!-- Hidden canvas for capturing webcam frames -->
+<canvas id="captureCanvas" style="display:none"></canvas>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let localStream = null;
+  let isRunning = false;
+  let currentPrompt = '';
+  let strength = 0.6;
+  let loopId = null;
+  let ws = null;
+  let fpsCounter = 0;
+  let lastFpsTime = performance.now();
+  const MODEL = 'fal-ai/lcm-sd15-i2i'; // fast real-time i2i model on fal
+
+  // ── Logging ────────────────────────────────────────────────────────────────
+  function log(msg, type = 'default') {
+    const area = document.getElementById('logArea');
+    const el = document.createElement('div');
+    el.className = `log-entry ${type}`;
+    const t = new Date();
+    const ts = `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}:${String(t.getSeconds()).padStart(2,'0')}`;
+    el.innerHTML = `<span class="time">${ts}</span><span class="msg">${msg}</span>`;
+    area.appendChild(el);
+    area.scrollTop = area.scrollHeight;
+  }
+
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 4500);
+  }
+
+  function setStatus(state) {
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    dot.className = 'status-dot';
+    if (state === 'live') { dot.classList.add('live'); txt.textContent = 'LIVE'; }
+    else if (state === 'connecting') { dot.classList.add('connecting'); txt.textContent = 'CONNECTING'; }
+    else { txt.textContent = 'OFFLINE'; }
+  }
+
+  function toggleKey() {
+    const i = document.getElementById('apiKeyInput');
+    i.type = i.type === 'password' ? 'text' : 'password';
+  }
+
+  function updateStrength(v) {
+    strength = parseFloat(v);
+    document.getElementById('strengthVal').textContent = strength.toFixed(2);
+  }
+
+  // ── Start ──────────────────────────────────────────────────────────────────
+  async function startSession() {
+    const apiKey = document.getElementById('apiKeyInput').value.trim();
+    if (!apiKey) { toast('Enter your Fal.ai API key first.'); return; }
+    if (!currentPrompt) { toast('Set an edit prompt before starting.'); return; }
+
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('connectingOverlay').classList.add('visible');
+    document.getElementById('connectingMsg').textContent = 'REQUESTING CAMERA...';
+    setStatus('connecting');
+
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 512, height: 512, frameRate: 30 },
+        audio: false
+      });
+
+      const video = document.getElementById('localVideo');
+      video.srcObject = localStream;
+      video.style.display = 'block';
+      document.getElementById('localPlaceholder').style.display = 'none';
+      log('Camera ready', 'success');
+
+      document.getElementById('connectingMsg').textContent = 'CONNECTING TO FAL...';
+      await connectWebSocket(apiKey);
+
+    } catch (err) {
+      log(`Error: ${err.message}`, 'error');
+      toast(`Failed to start: ${err.message}`);
+      reset();
+    }
+  }
+
+  // ── WebSocket to Fal realtime ──────────────────────────────────────────────
+  async function connectWebSocket(apiKey) {
+    const wsUrl = `wss://fal.run/${MODEL}/realtime?fal_key=${encodeURIComponent(apiKey)}`;
+    ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = () => {
+      log('Connected to Fal.ai ✓', 'success');
+      document.getElementById('connectingOverlay').classList.remove('visible');
+      document.getElementById('outputCanvas').style.display = 'block';
+      document.getElementById('remotePlaceholder').style.display = 'none';
+      document.getElementById('fpsBadge').style.display = 'block';
+      document.getElementById('stopBtn').disabled = false;
+      document.getElementById('applyBtn').disabled = false;
+      isRunning = true;
+      setStatus('live');
+      startFrameLoop();
+    };
+
+    ws.onmessage = async (event) => {
+      try {
+        let data;
+        if (event.data instanceof ArrayBuffer) {
+          data = JSON.parse(new TextDecoder().decode(event.data));
+        } else {
+          data = JSON.parse(event.data);
+        }
+
+        if (data.images && data.images[0]) {
+          const imgSrc = data.images[0].url || data.images[0];
+          await drawOutputImage(imgSrc);
+          updateFps();
+        } else if (data.error) {
+          log(`Fal error: ${data.error}`, 'error');
+        }
+      } catch(e) {
+        // binary frame — try as image blob
+        if (event.data instanceof ArrayBuffer) {
+          const blob = new Blob([event.data], { type: 'image/jpeg' });
+          const url = URL.createObjectURL(blob);
+          await drawOutputImage(url);
+          URL.revokeObjectURL(url);
+          updateFps();
+        }
+      }
+    };
+
+    ws.onerror = (e) => {
+      log('WebSocket error — check API key', 'error');
+      toast('Connection error. Check your Fal.ai API key.');
+      reset();
+    };
+
+    ws.onclose = (e) => {
+      if (isRunning) {
+        log(`Disconnected (${e.code})`, 'error');
+        reset();
+      }
+    };
+  }
+
+  // ── Frame loop: capture webcam → send to Fal ──────────────────────────────
+  function startFrameLoop() {
+    const video = document.getElementById('localVideo');
+    const cap = document.getElementById('captureCanvas');
+    cap.width = 512; cap.height = 512;
+    const ctx = cap.getContext('2d');
+
+    let sending = false;
+
+    function loop() {
+      if (!isRunning) return;
+      loopId = requestAnimationFrame(loop);
+
+      if (sending || !ws || ws.readyState !== WebSocket.OPEN) return;
+      if (video.readyState < 2) return;
+
+      sending = true;
+      ctx.drawImage(video, 0, 0, 512, 512);
+      const b64 = cap.toDataURL('image/jpeg', 0.75).split(',')[1];
+
+      const payload = JSON.stringify({
+        prompt: currentPrompt,
+        image_url: `data:image/jpeg;base64,${b64}`,
+        strength: strength,
+        num_inference_steps: 4,
+        guidance_scale: 1,
+        seed: -1
+      });
+
+      try { ws.send(payload); } catch(e) {}
+      sending = false;
+    }
+
+    loopId = requestAnimationFrame(loop);
+    log(`Streaming at strength ${strength.toFixed(2)}`, 'info');
+  }
+
+  // ── Draw output frame ──────────────────────────────────────────────────────
+  function drawOutputImage(src) {
+    return new Promise((resolve) => {
+      const canvas = document.getElementById('outputCanvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.onload = () => {
+        canvas.width = img.width || 512;
+        canvas.height = img.height || 512;
+        ctx.drawImage(img, 0, 0);
+        resolve();
+      };
+      img.onerror = resolve;
+      img.src = src;
+    });
+  }
+
+  // ── FPS counter ────────────────────────────────────────────────────────────
+  function updateFps() {
+    fpsCounter++;
+    const now = performance.now();
+    if (now - lastFpsTime >= 1000) {
+      document.getElementById('fpsBadge').textContent = `${fpsCounter} FPS`;
+      fpsCounter = 0;
+      lastFpsTime = now;
+    }
+  }
+
+  // ── Stop ──────────────────────────────────────────────────────────────────
+  function stopSession() {
+    log('Session stopped');
+    reset();
+  }
+
+  function reset() {
+    isRunning = false;
+    if (loopId) { cancelAnimationFrame(loopId); loopId = null; }
+    if (ws) { try { ws.close(); } catch(e){} ws = null; }
+    if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+
+    setStatus('offline');
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled = true;
+    document.getElementById('applyBtn').disabled = true;
+    document.getElementById('localVideo').style.display = 'none';
+    document.getElementById('outputCanvas').style.display = 'none';
+    document.getElementById('localPlaceholder').style.display = 'flex';
+    document.getElementById('remotePlaceholder').style.display = 'flex';
+    document.getElementById('connectingOverlay').classList.remove('visible');
+    document.getElementById('fpsBadge').style.display = 'none';
+  }
+
+  // ── Prompt controls ───────────────────────────────────────────────────────
+  function applyPrompt() {
+    const txt = document.getElementById('promptInput').value.trim();
+    if (!txt) { toast('Type an edit prompt first.'); return; }
+    currentPrompt = txt;
+    document.getElementById('activePromptText').textContent = txt;
+    document.getElementById('activePromptDisplay').classList.add('visible');
+    document.getElementById('promptInput').value = '';
+    document.querySelectorAll('.quick-btn').forEach(b => b.classList.remove('active'));
+    log(`Prompt set: "${txt}"`, 'info');
+  }
+
+  function quickEdit(btn, prompt) {
+    currentPrompt = prompt;
+    document.getElementById('activePromptText').textContent = prompt;
+    document.getElementById('activePromptDisplay').classList.add('visible');
+    document.querySelectorAll('.quick-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    log(`Quick edit: "${prompt}"`, 'info');
+  }
+
+  function clearPrompt() {
+    currentPrompt = '';
+    document.getElementById('activePromptDisplay').classList.remove('visible');
+    document.querySelectorAll('.quick-btn').forEach(b => b.classList.remove('active'));
+    log('Prompt cleared');
+  }
+
+  function addQuick() {
+    const label = document.getElementById('customLabel').value.trim();
+    const prompt = document.getElementById('customPrompt').value.trim();
+    if (!label || !prompt) { toast('Enter both label and prompt.'); return; }
+    const grid = document.getElementById('quickGrid');
+    const btn = document.createElement('button');
+    btn.className = 'quick-btn';
+    btn.innerHTML = `<span>✏️</span>${label}`;
+    btn.onclick = function() { quickEdit(this, prompt); };
+    grid.appendChild(btn);
+    document.getElementById('customLabel').value = '';
+    document.getElementById('customPrompt').value = '';
+    log(`Quick edit added: "${label}"`, 'success');
+  }
+
+  // Enter key on textarea
+  document.getElementById('promptInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); applyPrompt(); }
+  });
+
+  log('BYBTRANS ready — enter API key, set a prompt, then Start.');
+</script>
+</body>
+</html>
