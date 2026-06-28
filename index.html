@@ -456,22 +456,14 @@
       </div>
     </div>
 
-    <!-- PROMPT -->
+    <!-- INFO -->
     <div class="sidebar-section">
-      <div class="section-label">Active Edit</div>
-      <div class="active-prompt" id="activePromptDisplay">
-        <div class="active-prompt-text" id="activePromptText"></div>
-        <button class="clear-btn" onclick="clearPrompt()" title="Clear">✕</button>
-      </div>
-      <div class="prompt-area">
-        <textarea id="promptInput" placeholder="e.g. 'Change shirt to red', 'Add sunglasses', 'Cyberpunk background'..." rows="3"></textarea>
-        <div class="slider-row">
-          <label>Strength</label>
-          <input type="range" id="strengthSlider" min="0.3" max="0.9" step="0.05" value="0.6" oninput="updateStrength(this.value)">
-          <span class="slider-val" id="strengthVal">0.60</span>
-        </div>
-        <button class="btn btn-primary btn-full" id="applyBtn" onclick="applyPrompt()" disabled>Apply Edit</button>
-      </div>
+      <div class="section-label">How It Works</div>
+      <p style="font-size:0.72rem;color:var(--muted);line-height:1.7;">
+        1. Paste your <strong style="color:var(--accent)">Fal.ai API key</strong><br>
+        2. Upload a <strong style="color:var(--accent)">character face photo</strong><br>
+        3. Hit <strong style="color:var(--accent)">▶ Start</strong> — your face drives the character in real time
+      </p>
     </div>
 
     <!-- QUICK EDITS -->
@@ -669,12 +661,15 @@
 
         if (!resp.ok) {
           const err = await resp.text();
-          log(`Fal error ${resp.status}: ${err.slice(0,120)}`, 'error');
+          log(`Fal ${resp.status}: ${err.slice(0,150)}`, 'error');
+          // If 401 stop entirely — bad key
+          if (resp.status === 401 || resp.status === 403) { reset(); return; }
           sending = false;
           return;
         }
 
         const data = await resp.json();
+        log('Response keys: ' + Object.keys(data).join(', '), 'info');
         // live-portrait returns { video: { url } } or { images: [...] }
         if (data.video && data.video.url) {
           await drawOutputImage(data.video.url);
@@ -684,7 +679,7 @@
           await drawOutputImage(imgSrc);
           updateFps();
         } else {
-          log('Unexpected response: ' + JSON.stringify(data).slice(0,100), 'error');
+          log('Full response: ' + JSON.stringify(data).slice(0, 200), 'error');
         }
       } catch(e) {
         log(`Request failed: ${e.message}`, 'error');
