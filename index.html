@@ -511,7 +511,7 @@
   let currentApiKey = '';
   let fpsCounter = 0;
   let lastFpsTime = performance.now();
-  const MODEL = 'fal-ai/live-portrait'; // face cloning / live portrait model
+  const MODEL = 'fal-ai/face-swap'; // face cloning / live portrait model
   let characterImageB64 = null; // base64 of the reference character image
 
   // ── Character Image ────────────────────────────────────────────────────────
@@ -651,11 +651,8 @@
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            source_image_url: `data:image/jpeg;base64,${characterImageB64}`,
-            driving_image_url: `data:image/jpeg;base64,${b64}`,
-            live_portrait_dsize: 512,
-            live_portrait_scale: 2.3,
-            video_frame_load_cap: 1
+            base_image_url: `data:image/jpeg;base64,${b64}`,
+            swap_image_url: `data:image/jpeg;base64,${characterImageB64}`
           })
         });
 
@@ -669,17 +666,13 @@
         }
 
         const data = await resp.json();
-        log('Response keys: ' + Object.keys(data).join(', '), 'info');
-        // live-portrait returns { video: { url } } or { images: [...] }
-        if (data.video && data.video.url) {
-          await drawOutputImage(data.video.url);
-          updateFps();
-        } else if (data.images && data.images[0]) {
-          const imgSrc = data.images[0].url || data.images[0];
-          await drawOutputImage(imgSrc);
+        // face-swap returns { image: { url } }
+        const imgUrl = data?.image?.url || data?.images?.[0]?.url || data?.images?.[0];
+        if (imgUrl) {
+          await drawOutputImage(imgUrl);
           updateFps();
         } else {
-          log('Full response: ' + JSON.stringify(data).slice(0, 200), 'error');
+          log('Response: ' + JSON.stringify(data).slice(0, 200), 'error');
         }
       } catch(e) {
         log(`Request failed: ${e.message}`, 'error');
